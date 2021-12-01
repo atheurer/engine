@@ -121,6 +121,8 @@ function archive_to_controller() {
         exit_error "archive_to_controller(): destination is not defined"
     fi
     pushd $src || exit_error "Could not chdir to $src"
+    echo "Compressing files before sending"
+    find . -type f | grep -v '\.xz$' | xz --files
     while [ $ssh_rc -gt 0 -a $ssh_attempts -lt $max_attempts ]; do
         echo "Trying to tar/ssh fron $src to $rickshaw_host:$dest"
         tar czf - . | ssh \
