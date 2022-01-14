@@ -14,6 +14,7 @@ rb_exit_timeout=3
 rb_exit_abort=4
 rb_exit_input=2
 default_timeout=240
+postprocess_tools_timeout=600
 runtime_padding=180
 abort=0
 
@@ -303,6 +304,7 @@ function setup_core_env() {
     echo "cs_dir: $cs_dir"
     tool_start_cmds="$cs_dir/tool-start"
     tool_stop_cmds="$cs_dir/tool-stop"
+    tool_postprocess_cmds="$cs_dir/tool-postprocess"
     roadblock_msgs_dir="$cs_dir/roadblock-msgs"
     mkdir -p "$roadblock_msgs_dir"
     sysinfo_dir="$cs_dir/sysinfo"
@@ -769,6 +771,28 @@ function stop_tools() {
     fi
 }
 
+function postprocess_tools() {
+    if [ "$disable_tools" == "1" ]; then
+        echo "Not running tools because --disable-tools=1 was used"
+    else
+        if pushd tool-data >/dev/null; then
+            while read -u 9 line; do
+                tool_name=`echo $line | awk -F: '{print $1}'`
+                tool_cmd=`echo $line | sed -e s/^$tool_name://`
+                if pushd $tool_name >/dev/null; then
+                    eval $tool_cmd
+                    popd >/dev/null
+                else
+                    abort_error "postprocess_tools: Failed to pushd to ${tool_name}" $sync $leader
+                fi
+            done 9<"$tool_postprocess_cmds"
+            popd >/dev/null
+        else
+            abort_error "postprocess_tools: Failed to pushd to tool-data" $sync $leader
+        fi
+    fi
+}
+
 function send_data() {
     echo -e "\nCopying data back to controller"
     # Send all of the test data to the controller and remove local data
@@ -808,6 +832,7 @@ if [ $abort -eq 0 -a $? -eq 0 ]; then
                 fi
                 do_roadblock $sync_prefix-stop-tests $leader $default_timeout
                 do_roadblock $sync_prefix-stop-tools $leader $default_timeout
+                do_roadblock $sync_prefix-postprocess-tools $leader $postprocess_tools_timeout
                 stop_tools
             fi
         fi
